@@ -3,7 +3,8 @@ import { RUNTIME_CONFIG } from '../config/runtimeConfig';
 
 const DEFAULT_API_ORIGIN = 'https://smoveapi-1.onrender.com';
 const HTTP_URL_PATTERN = /^https?:\/\//i;
-const FORBIDDEN_RENDER_SCHEME_PATTERN = /^(?:blob|file|data):/i;
+const FORBIDDEN_RENDER_SCHEME_PATTERN = /^(?:blob|file):/i;
+const DATA_URL_PATTERN = /^data:image\//i;
 const LOCAL_DISK_PATH_PATTERN = /^(?:[a-zA-Z]:[\\/]|~[\\/]|\/Users\/|\/home\/|\/workspace\/|\/var\/|\/tmp\/|server\/data\/|api\/server\/data\/)/;
 
 type MediaUrlCandidate = Partial<MediaFile> & {
@@ -27,6 +28,7 @@ const logUnresolved = (reason: string, value: unknown) => {
 };
 
 const isSafeHttpUrl = (value: string): boolean => HTTP_URL_PATTERN.test(value);
+const isSafeImageDataUrl = (value: string): boolean => DATA_URL_PATTERN.test(value.trim());
 
 const isForbiddenRenderableValue = (value: string): boolean => {
   const normalized = value.trim();
@@ -34,6 +36,7 @@ const isForbiddenRenderableValue = (value: string): boolean => {
     !normalized ||
     normalized.startsWith('//') ||
     FORBIDDEN_RENDER_SCHEME_PATTERN.test(normalized) ||
+    (normalized.startsWith('data:') && !isSafeImageDataUrl(normalized)) ||
     normalized.startsWith('media:') ||
     LOCAL_DISK_PATH_PATTERN.test(normalized) ||
     normalized.includes('\\')
@@ -54,7 +57,7 @@ export const extractUploadPublicPath = (value: unknown): string => {
 
 export const absolutizeMediaPath = (value: string): string => {
   const normalized = value.trim();
-  if (isSafeHttpUrl(normalized)) return normalized;
+  if (isSafeHttpUrl(normalized) || isSafeImageDataUrl(normalized)) return normalized;
 
   const apiOrigin = toApiOrigin();
   const extractedPath = extractUploadPublicPath(normalized);
@@ -69,7 +72,7 @@ export const resolveMediaRecordUrl = (media: MediaUrlCandidate | null | undefine
   if (!media || typeof media !== 'object') return '';
 
   const url = `${media.url || media.publicUrl || ''}`.trim();
-  if (isSafeHttpUrl(url)) return url;
+  if (isSafeHttpUrl(url) || isSafeImageDataUrl(url)) return url;
 
   const publicPath = `${media.publicPath || ''}`.trim() || extractUploadPublicPath(media.path || (media as { storagePath?: string }).storagePath || media.url || media.publicUrl || media.thumbnailUrl || media.filename);
   if (publicPath.startsWith('/uploads/')) return `${toApiOrigin()}${publicPath}`;
@@ -85,7 +88,7 @@ export const normalizeMediaReference = (value: unknown): string => {
   const normalized = `${value || ''}`.trim();
   if (!normalized) return '';
   if (normalized.startsWith('media:')) return `media:${normalized.slice(6).trim()}`;
-  if (isSafeHttpUrl(normalized)) return normalized;
+  if (isSafeHttpUrl(normalized) || isSafeImageDataUrl(normalized)) return normalized;
   if (normalized.startsWith('/uploads/') || normalized.startsWith('uploads/')) return absolutizeMediaPath(normalized);
   if (/^[a-zA-Z0-9_-]{6,}$/.test(normalized)) return `media:${normalized}`;
   return '';
@@ -117,7 +120,7 @@ export const resolveMediaUrl = (value: unknown, mediaList: MediaFile[] = []): st
   const byId = matchById(normalized, mediaList);
   if (byId) return resolveMediaUrl(byId, mediaList);
 
-  if (isSafeHttpUrl(normalized) || normalized.startsWith('/uploads/') || normalized.startsWith('uploads/')) {
+  if (isSafeHttpUrl(normalized) || isSafeImageDataUrl(normalized) || normalized.startsWith('/uploads/') || normalized.startsWith('uploads/')) {
     return absolutizeMediaPath(normalized);
   }
 

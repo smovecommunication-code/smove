@@ -1,12 +1,16 @@
-import { isMediaFile, isMediaFileArray, type MediaFile, type MediaType } from '../domain/contentSchemas';
-import { readFromStorage, writeToStorage } from './storage/localStorageStore';
-import { extractUploadPublicPath, resolveMediaRecordUrl, resolveMediaUrl } from '../utils/mediaResolver';
+import { isMediaFile, type MediaFile, type MediaType } from '../domain/contentSchemas';
+import { writeToStorage } from './storage/localStorageStore';
+import { normalizeCmsMedia } from '../utils/cmsMedia';
 
 const MEDIA_STORAGE_KEY = 'smove_media_files';
-const preserveLocalDataUrl = (value: string | undefined): string => {
-  const normalized = `${value || ''}`.trim();
-  return normalized.startsWith('data:') ? normalized : '';
+const normalizeMedia = (file: MediaFile): MediaFile => {
+  const normalized = normalizeCmsMedia(file);
+  if (!normalized) {
+    throw new Error('Invalid media file payload');
+  }
+  return normalized;
 };
+
 
 export interface MediaUploadInput {
   name: string;
@@ -17,37 +21,6 @@ export interface MediaUploadInput {
   caption?: string;
   tags?: string[];
 }
-
-const normalizeMedia = (file: MediaFile): MediaFile => {
-  const extractedPublicPath = extractUploadPublicPath(file.publicPath || file.url || file.thumbnailUrl || file.filename || file.name);
-  const normalizedFilename = (file.filename?.trim() || file.originalName?.trim() || file.name.trim()).replace(/^\/?uploads\//, '') || extractedPublicPath.replace(/^\/uploads\//, '');
-  const normalizedName = (file.name || file.originalName || normalizedFilename || 'media-file').trim();
-  const normalizedAlt = file.alt?.trim() || normalizedName;
-  const nowIso = new Date().toISOString();
-  const resolvedUrl = resolveMediaRecordUrl({ ...file, filename: normalizedFilename, publicPath: file.publicPath || extractedPublicPath }) || resolveMediaUrl(file.url) || preserveLocalDataUrl(file.url);
-
-  return {
-    ...file,
-    url: resolvedUrl,
-    thumbnailUrl: resolvedUrl || resolveMediaUrl(file.thumbnailUrl || file.url) || preserveLocalDataUrl(file.thumbnailUrl || file.url),
-    name: normalizedName,
-    title: file.title?.trim() || normalizedName,
-    label: file.label?.trim() || normalizedName,
-    alt: normalizedAlt,
-    caption: file.caption?.trim() || normalizedAlt || normalizedName,
-    tags: file.tags.map((tag) => tag.trim()).filter(Boolean),
-    source: file.source?.trim() || 'local-storage',
-    type: file.type === 'document' ? 'file' : file.type,
-    filename: normalizedFilename,
-    originalName: file.originalName?.trim() || normalizedName,
-    mimeType: file.mimeType?.trim() || (typeof file.metadata?.mimeType === 'string' ? file.metadata.mimeType.trim() : ''),
-    publicPath: file.publicPath?.trim() || extractedPublicPath || (normalizedFilename ? `/uploads/${normalizedFilename}` : ''),
-    metadata: (file.metadata && typeof file.metadata === 'object' ? file.metadata : {}) as Record<string, unknown>,
-    createdAt: file.createdAt || file.uploadedDate || nowIso,
-    updatedAt: file.updatedAt || nowIso,
-    archivedAt: typeof file.archivedAt === 'string' ? file.archivedAt : null,
-  };
-};
 
 export interface MediaRepository {
   getAll(): MediaFile[];
@@ -68,9 +41,20 @@ class LocalMediaRepository implements MediaRepository {
     return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
   }
 
+  private readStoredFiles(): unknown[] {
+    if (!this.hasStorage()) return this.memoryFiles;
+
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(MEDIA_STORAGE_KEY) || '[]') as unknown;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   getAll(): MediaFile[] {
-    const files = this.hasStorage() ? readFromStorage(MEDIA_STORAGE_KEY, isMediaFileArray, []) : this.memoryFiles;
-    const normalized = files.map(normalizeMedia);
+    const files = this.readStoredFiles();
+    const normalized = files.map((file) => normalizeCmsMedia(file)).filter((file): file is MediaFile => Boolean(file));
     this.memoryFiles = normalized;
     if (this.hasStorage() && JSON.stringify(files) !== JSON.stringify(normalized)) {
       writeToStorage(MEDIA_STORAGE_KEY, normalized);
@@ -125,6 +109,9 @@ class LocalMediaRepository implements MediaRepository {
           url: encodedResult,
           thumbnailUrl: encodedResult,
           size: data.file.size,
+          filename: data.file.name || data.name,
+          originalName: data.file.name || data.name,
+          mimeType: data.file.type,
           uploadedDate: new Date().toISOString(),
           uploadedBy: data.uploadedBy,
           alt: data.alt || data.name,
@@ -133,7 +120,7 @@ class LocalMediaRepository implements MediaRepository {
           caption: data.caption || data.alt || data.name,
           tags: data.tags || [],
           source: 'local-upload',
-          metadata: {},
+          metadata: { mimeType: data.file.type },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -171,7 +158,7 @@ class LocalMediaRepository implements MediaRepository {
   }
 
   replaceAll(files: MediaFile[]): MediaFile[] {
-    const normalized = files.filter(isMediaFile).map(normalizeMedia);
+    const normalized = files.map((file) => normalizeCmsMedia(file)).filter((file): file is MediaFile => Boolean(file));
     this.memoryFiles = normalized;
     writeToStorage(MEDIA_STORAGE_KEY, normalized);
     return normalized;

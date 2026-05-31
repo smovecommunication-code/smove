@@ -117,4 +117,52 @@ describe('assetReference', () => {
     expect(resolved.url).toContain('%23');
     expect(resolved.url).not.toContain('<svg');
   });
+
+  it('renders canonical CMS media records that only provide a publicPath', () => {
+    mediaRepository.replaceAll([
+      {
+        id: 'asset-public-path',
+        name: 'remote-hero.jpg',
+        originalName: 'remote-hero.jpg',
+        filename: '2026/05/remote-hero.jpg',
+        type: 'image',
+        url: '',
+        publicPath: '/uploads/2026/05/remote-hero.jpg',
+        size: 2048,
+        uploadedDate: new Date().toISOString(),
+        uploadedBy: 'cms',
+        alt: 'Remote hero',
+        tags: [],
+      },
+    ]);
+
+    const resolved = resolveAssetReference('media:asset-public-path', 'Fallback alt', 'fallback image');
+    expect(resolved.src).toBe('https://smoveapi-1.onrender.com/uploads/2026/05/remote-hero.jpg');
+    expect(resolved.alt).toBe('Remote hero');
+    expect(resolved.isFallback).toBe(false);
+  });
+
+  it('keeps local disk uploads renderable immediately with image data URLs', () => {
+    mediaRepository.replaceAll([
+      {
+        id: 'asset-local-upload',
+        name: 'local.png',
+        filename: 'local.png',
+        type: 'image',
+        url: 'data:image/png;base64,abc123',
+        thumbnailUrl: 'data:image/png;base64,abc123',
+        size: 12,
+        uploadedDate: new Date().toISOString(),
+        uploadedBy: 'cms',
+        alt: 'Local upload',
+        source: 'local-upload',
+        tags: [],
+      },
+    ]);
+
+    const resolved = resolveAssetReference('media:asset-local-upload', 'Fallback alt', 'fallback image');
+    expect(resolved.src).toBe('data:image/png;base64,abc123');
+    expect(resolved.isFallback).toBe(false);
+  });
+
 });

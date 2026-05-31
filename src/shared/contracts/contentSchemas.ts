@@ -41,6 +41,7 @@ export interface MediaAsset {
   id: string;
   type: MediaType;
   name: string;
+  originalName?: string;
   label?: string;
   filename?: string;
   mimeType?: string;
@@ -219,7 +220,7 @@ export const isMediaFile = (value: unknown): value is MediaFile => {
     (v.filename === undefined || isString(v.filename)) &&
     (v.mimeType === undefined || isString(v.mimeType)) &&
     (v.type === 'image' || v.type === 'video' || v.type === 'file' || v.type === 'document') &&
-    isString(v.url) &&
+    (v.url === undefined || typeof v.url === 'string') &&
     (v.filename === undefined || isString(v.filename)) &&
     (v.originalName === undefined || isString(v.originalName)) &&
     (v.mimeType === undefined || isString(v.mimeType)) &&

@@ -2,6 +2,7 @@ import { RUNTIME_CONFIG } from '../config/runtimeConfig';
 import type { MediaFile, Project, Service } from '../domain/contentSchemas';
 import type { HomePageContentSettings } from '../data/pageContentSeed';
 import { ContentApiError } from './contentApi';
+import { normalizeCmsMediaCollection } from './cmsMedia';
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -20,6 +21,7 @@ function normalizeCollection<T>(value: unknown): T[] {
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
     if (Array.isArray(record.projects)) return record.projects as T[];
+    if (Array.isArray(record.mediaFiles)) return record.mediaFiles as T[];
     if (Array.isArray(record.items)) return record.items as T[];
     if (Array.isArray(record.data)) return record.data as T[];
     if (record.data && typeof record.data === 'object') return normalizeCollection<T>(record.data);
@@ -98,5 +100,5 @@ export async function fetchPublicPageContent(): Promise<HomePageContentSettings>
 
 export async function fetchPublicMediaFiles(): Promise<MediaFile[]> {
   const data = await request<{ mediaFiles: MediaFile[] }>('/media');
-  return data.mediaFiles;
+  return normalizeCmsMediaCollection(normalizeCollection<MediaFile>(data));
 }

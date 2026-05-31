@@ -1,6 +1,7 @@
 import { RUNTIME_CONFIG } from '../config/runtimeConfig';
 import type { BlogPost, MediaFile, Project, Service } from '../domain/contentSchemas';
 import type { HomePageContentSettings } from '../data/pageContentSeed';
+import { normalizeCmsMedia, normalizeCmsMediaCollection } from './cmsMedia';
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -30,6 +31,10 @@ export interface EditorialAnalytics {
 
 export interface MediaUploadPayload {
   filename: string;
+  originalName?: string;
+  mimeType?: string;
+  type?: MediaFile['type'];
+  size?: number;
   title?: string;
   dataUrl: string;
   alt?: string;
@@ -344,7 +349,7 @@ export async function deleteBackendService(id: string): Promise<void> {
 
 export async function fetchBackendMediaFiles(): Promise<MediaFile[]> {
   const body = await request<{ mediaFiles: MediaFile[] }>('/media');
-  return body.data?.mediaFiles || [];
+  return normalizeCmsMediaCollection(body.data?.mediaFiles || []);
 }
 
 
@@ -353,7 +358,7 @@ export async function uploadBackendMediaFile(payload: MediaUploadPayload): Promi
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return body.data!.mediaFile;
+  return normalizeCmsMedia(body.data!.mediaFile) || body.data!.mediaFile;
 }
 
 export async function saveBackendMediaFile(mediaFile: MediaFile): Promise<MediaFile> {
@@ -361,7 +366,7 @@ export async function saveBackendMediaFile(mediaFile: MediaFile): Promise<MediaF
     method: 'POST',
     body: JSON.stringify(mediaFile),
   });
-  return body.data!.mediaFile;
+  return normalizeCmsMedia(body.data!.mediaFile) || body.data!.mediaFile;
 }
 
 export async function deleteBackendMediaFile(id: string): Promise<void> {
@@ -378,7 +383,7 @@ export async function replaceBackendMediaFile(id: string, mediaFile: Partial<Med
     method: 'POST',
     body: JSON.stringify(mediaFile),
   });
-  return body.data!.mediaFile;
+  return normalizeCmsMedia(body.data!.mediaFile) || body.data!.mediaFile;
 }
 
 export async function fetchBackendPageContent(): Promise<HomePageContentSettings> {
